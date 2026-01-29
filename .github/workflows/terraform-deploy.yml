@@ -1,0 +1,186 @@
+name: Terraform Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "prod"
+      action:
+        description: "plan or apply"
+        required: true
+        default: "plan"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+  TF_VARS_JSON: ${{ secrets.TF_VARS_JSON }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preflight - validate required secrets
+        run: |
+          missing=0
+          for v in AWS_REGION AWS_ROLE_ARN TF_BACKEND_BUCKET TF_BACKEND_DYNAMODB_TABLE TF_BACKEND_REGION; do
+            if [ -z "${!v}" ]; then
+              echo "Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}
+          TF_BACKEND_DYNAMODB_TABLE: ${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}
+          TF_BACKEND_REGION: ${{ secrets.TF_BACKEND_REGION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+        working-directory: .
+
+      - name: Preflight - AWS access and backend reachability
+        run: |
+          aws sts get-caller-identity
+          aws s3api head-bucket --bucket "$TF_BACKEND_BUCKET"
+          aws dynamodb describe-table --table-name "$TF_BACKEND_DYNAMODB_TABLE" --region "$TF_BACKEND_REGION"
+          if [ -n "$TF_BACKEND_KMS_KEY_ID" ]; then
+            aws kms describe-key --key-id "$TF_BACKEND_KMS_KEY_ID" --region "$TF_BACKEND_REGION"
+          fi
+        env:
+          TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}
+          TF_BACKEND_DYNAMODB_TABLE: ${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}
+          TF_BACKEND_REGION: ${{ secrets.TF_BACKEND_REGION }}
+          TF_BACKEND_KMS_KEY_ID: ${{ secrets.TF_BACKEND_KMS_KEY_ID }}
+
+      - name: Cleanup legacy EventBridge targets (secure-s3-transfer-*)
+        run: |
+          set +e
+          for region in "${AWS_REGION}" "us-east-1"; do
+            for rule in \
+              secure-s3-transfer-s3-public-access-changes \
+              secure-s3-transfer-s3-bucket-policy-changes \
+              secure-s3-transfer-kms-deletion \
+              secure-s3-transfer-kms-policy-changes \
+              secure-s3-transfer-iam-role-policy-changes; do
+              aws events list-targets-by-rule --rule "$rule" --region "$region" --output text >/tmp/targets.txt 2>/dev/null
+              if grep -q "sns-alerts" /tmp/targets.txt; then
+                aws events remove-targets --rule "$rule" --ids sns-alerts --region "$region" >/dev/null 2>&1
+              fi
+            done
+          done
+          set -e
+
+      - name: Terraform init
+        run: |
+          if [ -z "${TF_BACKEND_KEY}" ]; then
+            TF_BACKEND_KEY="envs/${ENV_NAME}/terraform.tfstate"
+          fi
+          terraform init \
+            -backend-config="bucket=${TF_BACKEND_BUCKET}" \
+            -backend-config="key=${TF_BACKEND_KEY}" \
+            -backend-config="region=${TF_BACKEND_REGION}" \
+            -backend-config="dynamodb_table=${TF_BACKEND_DYNAMODB_TABLE}" \
+            -backend-config="encrypt=true" \
+            ${TF_BACKEND_KMS_KEY_ID:+-backend-config="kms_key_id=${TF_BACKEND_KMS_KEY_ID}"}
+        env:
+          TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}
+          TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
+          TF_BACKEND_REGION: ${{ secrets.TF_BACKEND_REGION }}
+          TF_BACKEND_DYNAMODB_TABLE: ${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}
+          TF_BACKEND_KMS_KEY_ID: ${{ secrets.TF_BACKEND_KMS_KEY_ID }}
+          ENV_NAME: ${{ github.event.inputs.environment }}
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Load TF_VAR_* secrets (when TF_VARS_JSON is not set)
+        if: ${{ env.TF_VARS_JSON == '' }}
+        run: |
+          {
+            echo "TF_VAR_aws_region=${{ secrets.AWS_REGION }}"
+            echo "TF_VAR_aws_profile="
+            echo "TF_VAR_bucket_name=${{ secrets.TF_VAR_BUCKET_NAME }}"
+            echo "TF_VAR_kms_alias=${{ secrets.TF_VAR_KMS_ALIAS }}"
+            echo "TF_VAR_assume_role_principals=${{ secrets.TF_VAR_ASSUME_ROLE_PRINCIPALS }}"
+            echo "TF_VAR_assume_role_external_id=${{ secrets.TF_VAR_ASSUME_ROLE_EXTERNAL_ID }}"
+            echo "TF_VAR_audit_log_bucket_name=${{ secrets.TF_VAR_AUDIT_LOG_BUCKET_NAME }}"
+            echo "TF_VAR_audit_log_retention_days=${{ secrets.TF_VAR_AUDIT_LOG_RETENTION_DAYS }}"
+            echo "TF_VAR_incoming_prefix=${{ secrets.TF_VAR_INCOMING_PREFIX }}"
+            echo "TF_VAR_artefacts_prefix=${{ secrets.TF_VAR_ARTEFACTS_PREFIX }}"
+            echo "TF_VAR_downloaded_prefix=${{ secrets.TF_VAR_DOWNLOADED_PREFIX }}"
+            echo "TF_VAR_enable_identity_center=${{ secrets.TF_VAR_ENABLE_IDENTITY_CENTER }}"
+            echo "TF_VAR_identity_center_instance_arn=${{ secrets.TF_VAR_IDENTITY_CENTER_INSTANCE_ARN }}"
+            echo "TF_VAR_identity_store_id=${{ secrets.TF_VAR_IDENTITY_STORE_ID }}"
+            echo "TF_VAR_identity_center_account_id=${{ secrets.TF_VAR_IDENTITY_CENTER_ACCOUNT_ID }}"
+            echo "TF_VAR_uploader_permission_set_name=${{ secrets.TF_VAR_UPLOADER_PERMISSION_SET_NAME }}"
+            echo "TF_VAR_downloader_permission_set_name=${{ secrets.TF_VAR_DOWNLOADER_PERMISSION_SET_NAME }}"
+            echo "TF_VAR_uploader_group_name=${{ secrets.TF_VAR_UPLOADER_GROUP_NAME }}"
+            echo "TF_VAR_downloader_group_name=${{ secrets.TF_VAR_DOWNLOADER_GROUP_NAME }}"
+            echo "TF_VAR_identity_center_create_groups=${{ secrets.TF_VAR_IDENTITY_CENTER_CREATE_GROUPS }}"
+            echo "TF_VAR_identity_center_create_assignments=${{ secrets.TF_VAR_IDENTITY_CENTER_CREATE_ASSIGNMENTS }}"
+            echo "TF_VAR_identity_center_session_duration=${{ secrets.TF_VAR_IDENTITY_CENTER_SESSION_DURATION }}"
+          } >> $GITHUB_ENV
+
+      - name: Write tfvars from JSON secret (optional)
+        if: ${{ env.TF_VARS_JSON != '' }}
+        run: |
+          echo "$TF_VARS_JSON" > ci.auto.tfvars.json
+          ls -la ci.auto.tfvars.json
+        env:
+          TF_VARS_JSON: ${{ env.TF_VARS_JSON }}
+
+      - name: Pre-apply - ensure audit KMS policy exists
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: terraform apply -auto-approve -input=false -target=module.audit_logging.aws_kms_key.audit -target=module.audit_logging.aws_kms_alias.audit
+
+      - name: Terraform state pull (debug)
+        run: |
+          terraform state pull > /tmp/tfstate.json
+          head -n 5 /tmp/tfstate.json
+
+      - name: Terraform plan
+        if: ${{ github.event.inputs.action == 'plan' }}
+        run: terraform plan
+
+      - name: Terraform plan (for apply)
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Post-apply validation (prod only)
+        if: ${{ github.event.inputs.action == 'apply' && github.event.inputs.environment == 'prod' }}
+        run: |
+          pwsh -File ../../scripts/run-validate.ps1 \
+            -EnvDir ../../infra/envs/prod \
+            -SkipClientValidation

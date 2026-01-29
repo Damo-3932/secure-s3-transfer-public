@@ -1,0 +1,67 @@
+name: Terraform Validate (Prod)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  TF_IN_AUTOMATION: "true"
+  TF_VARS_JSON: ${{ secrets.TF_VARS_JSON }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra/envs/prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${TF_BACKEND_BUCKET}" \
+            -backend-config="key=${TF_BACKEND_KEY}" \
+            -backend-config="region=${TF_BACKEND_REGION}" \
+            -backend-config="dynamodb_table=${TF_BACKEND_DYNAMODB_TABLE}" \
+            -backend-config="encrypt=true" \
+            ${TF_BACKEND_KMS_KEY_ID:+-backend-config="kms_key_id=${TF_BACKEND_KMS_KEY_ID}"}
+        env:
+          TF_BACKEND_BUCKET: ${{ secrets.TF_BACKEND_BUCKET }}
+          TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
+          TF_BACKEND_REGION: ${{ secrets.TF_BACKEND_REGION }}
+          TF_BACKEND_DYNAMODB_TABLE: ${{ secrets.TF_BACKEND_DYNAMODB_TABLE }}
+          TF_BACKEND_KMS_KEY_ID: ${{ secrets.TF_BACKEND_KMS_KEY_ID }}
+
+      - name: Write tfvars from JSON secret (optional)
+        if: ${{ env.TF_VARS_JSON != '' }}
+        run: |
+          echo "$TF_VARS_JSON" > ci.auto.tfvars.json
+          ls -la ci.auto.tfvars.json
+        env:
+          TF_VARS_JSON: ${{ env.TF_VARS_JSON }}
+
+      - name: Validate security posture (prod)
+        run: |
+          pwsh -File ../../../scripts/run-validate.ps1 \
+            -EnvDir . \
+            -SkipClientValidation

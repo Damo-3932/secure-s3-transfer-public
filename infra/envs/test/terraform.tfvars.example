@@ -1,0 +1,61 @@
+aws_region  = "ap-southeast-2"
+aws_profile = "YOUR_SSO_PROFILE"
+bucket_name = "test-secure-s3-transfer-<unique>"
+kms_alias   = "alias/test-secure-s3-transfer"
+
+# Object prefixes
+incoming_prefix   = "incoming/"
+artefacts_prefix  = "incoming/artefacts/"
+downloaded_prefix = "downloaded/"
+
+# Required: at least one principal ARN allowed to assume the roles.
+# For SSO, this is typically the AWSReservedSSO role ARN from your permission set.
+assume_role_principals = [
+  "arn:aws:iam::<ACCOUNT_ID>:role/<AWSReservedSSO_OR_ADMIN_ROLE>"
+]
+
+# Optional: only if you want ExternalId protection for cross-account usage.
+#assume_role_external_id = "secure-s3-transfer"
+
+# Audit logging (CloudTrail)
+audit_log_bucket_name = "test-secure-s3-transfer-audit-<unique>"
+audit_log_retention_days = 90
+lifecycle_expiration_days = 2
+
+# Optional: principals allowed to administer the KMS key
+#kms_admin_principals = [
+#  "arn:aws:iam::<ACCOUNT_ID>:role/<SSO_ADMIN_ROLE>",
+#  "arn:aws:iam::<ACCOUNT_ID>:role/<GITHUB_DEPLOY_ROLE>"
+#]
+
+# Optional: ADDITIONAL principal ARN patterns allowed to delete from incoming/ and artefacts/
+# The Terraform-created downloader role is automatically included.
+# Use this for Identity Center roles, admin roles, or other trusted principals.
+#delete_allowed_principal_arn_patterns = [
+#  # Example: Identity Center Downloader role (wildcard pattern)
+#  "arn:aws:iam::<ACCOUNT_ID>:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_SecureS3Transfer-Test-Downloader_*",
+#  "arn:aws:sts::<ACCOUNT_ID>:assumed-role/AWSReservedSSO_SecureS3Transfer-Test-Downloader_*/*",
+#  # Example: Platform admin role
+#  "arn:aws:iam::<ACCOUNT_ID>:role/aws-reserved/sso.amazonaws.com/<REGION>/AWSReservedSSO_Platform-Developer_*",
+#  "arn:aws:sts::<ACCOUNT_ID>:assumed-role/AWSReservedSSO_Platform-Developer_*/*"
+#]
+
+# Alerting
+#enable_alerting = true
+#alert_email = "security-alerts@example.com"
+#sns_kms_key_id = ""
+#sns_kms_alias = "alias/test-secure-s3-transfer-sns"
+#create_sns_cmk = true
+#alerting_name_prefix = "test-secure-s3-transfer"
+# Optional: IAM Identity Center automation (SSO permission sets + groups).
+#enable_identity_center = true
+#identity_center_instance_arn = ""
+#identity_store_id = ""
+#identity_center_account_id = ""
+#uploader_permission_set_name = "SecureS3Transfer-Test-Uploader"
+#downloader_permission_set_name = "SecureS3Transfer-Test-Downloader"
+#uploader_group_name = "SecureS3Transfer-Test-Uploader"
+#downloader_group_name = "SecureS3Transfer-Test-Downloader"
+#identity_center_create_groups = true
+#identity_center_create_assignments = true
+#identity_center_session_duration = "PT8H"

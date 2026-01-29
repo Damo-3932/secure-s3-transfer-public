@@ -1,0 +1,37 @@
+{
+  "__comment__purpose": "Example download config. Copy to config.download.json or generate via setup-client.ps1.",
+  "__comment__where_values_come_from": "Most values come from .env or Terraform outputs.",
+
+  "__comment__aws_profile": "AWS CLI profile name configured by setup-client.ps1 (SSO). Example: SecureDownload",
+  "aws_profile": "<DOWNLOAD_SSO_PROFILE>",
+
+  "__comment__aws_region": "AWS region where the transfer bucket exists. Example: ap-southeast-2",
+  "aws_region": "<AWS_REGION>",
+
+  "__comment__bucket_name": "S3 transfer bucket. Find in Terraform outputs or AWS console.",
+  "bucket_name": "<S3_TRANSFER_BUCKET_NAME>",
+
+  "__comment__incoming_prefix": "Prefix containing encrypted payloads and artefacts.",
+  "incoming_prefix": "incoming/",
+
+  "__comment__artefacts_prefix": "Prefix containing manifests and hashes.",
+  "artefacts_prefix": "incoming/artefacts/",
+
+  "__comment__downloaded_prefix": "Archive prefix used by downloader after verification.",
+  "downloaded_prefix": "downloaded/",
+
+  "__comment__kms_key_id": "Full ARN of the CMK used for decryption (must match bucket CMK).",
+  "kms_key_id": "arn:aws:kms:<AWS_REGION>:<AWS_ACCOUNT_ID>:key/<KMS_KEY_ID>",
+
+  "__comment__cse_manifest_suffix": "Manifest suffix used by upload script (must match).",
+  "cse_manifest_suffix": ".cse.manifest.json",
+
+  "__comment__ciphertext_extension": "Encrypted payload extension used by uploader.",
+  "ciphertext_extension": ".enc",
+
+  "__comment__enable_log": "If true, writes logs to download_log_directory.",
+  "enable_log": true,
+
+  "__comment__download_log_directory": "Local log directory; created if missing.",
+  "download_log_directory": "%USERPROFILE%\\Documents\\SecureDownloadLogs"
+}
