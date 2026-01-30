@@ -1,0 +1,5 @@
+state_bucket_name     = "secure-s3-transfer-tf-state-<unique>"
+state_log_bucket_name = "secure-s3-transfer-tf-state-logs-<unique>"
+lock_table_name       = "secure-s3-transfer-prod-tfstate-lock"
+kms_alias             = "alias/secure-s3-transfer-state"
+dynamodb_kms_alias    = "alias/secure-s3-transfer-locks"

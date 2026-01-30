@@ -1,0 +1,6 @@
+bucket         = "secure-s3-transfer-tf-state-<unique>"
+key            = "envs/test/terraform.tfstate"
+region         = "ap-southeast-2"
+dynamodb_table = "secure-s3-transfer-test-tfstate-lock"
+encrypt        = true
+profile        = "Developer"

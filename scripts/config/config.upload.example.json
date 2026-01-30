@@ -1,0 +1,61 @@
+{
+  "__comment__purpose": "Example upload config. Copy to config.upload.json or generate via setup-client.ps1.",
+  "__comment__where_values_come_from": "Most values come from .env or Terraform outputs.",
+
+  "__comment__aws_profile": "AWS CLI profile name configured by setup-client.ps1 (SSO). Example: SecureUpload",
+  "aws_profile": "<UPLOAD_SSO_PROFILE>",
+
+  "__comment__aws_region": "AWS region where the transfer bucket exists. Example: ap-southeast-2",
+  "aws_region": "<AWS_REGION>",
+
+  "__comment__bucket_name": "S3 transfer bucket. Find in Terraform outputs or AWS console.",
+  "bucket_name": "<S3_TRANSFER_BUCKET_NAME>",
+
+  "__comment__incoming_prefix": "Upload staging prefix. Must match bucket policy expectations.",
+  "incoming_prefix": "incoming/",
+
+  "__comment__artefacts_prefix": "Where manifests and hashes are stored.",
+  "artefacts_prefix": "incoming/artefacts/",
+
+  "__comment__kms_key_id": "Full ARN of the CMK used by the bucket (SSE-KMS + client-side envelope encryption).",
+  "kms_key_id": "arn:aws:kms:<AWS_REGION>:<AWS_ACCOUNT_ID>:key/<KMS_KEY_ID>",
+
+  "__comment__enable_client_side_encryption": "If true, encrypt locally using AES-256-GCM before upload.",
+  "enable_client_side_encryption": true,
+
+  "__comment__cse_chunk_size_mb": "Chunk size for AES-GCM encryption; smaller chunks reduce memory use.",
+  "cse_chunk_size_mb": 4,
+
+  "__comment__cse_manifest_suffix": "Suffix for manifest file that stores encrypted data key and metadata.",
+  "cse_manifest_suffix": ".cse.manifest.json",
+
+  "__comment__ciphertext_extension": "Extension used for encrypted payloads.",
+  "ciphertext_extension": ".enc",
+
+  "__comment__use_transfer_acceleration": "If true, uses S3 Transfer Acceleration (bucket must be enabled).",
+  "use_transfer_acceleration": true,
+
+  "__comment__enable_upload_checksum": "If true, writes SHA256 hash to artefacts prefix.",
+  "enable_upload_checksum": true,
+
+  "__comment__upload_checksum_algorithm": "Hash algorithm; must match download verification. Keep SHA256.",
+  "upload_checksum_algorithm": "SHA256",
+
+  "__comment__store_ciphertext_with_enc_extension": "If true, stores ciphertext with .enc extension for clarity.",
+  "store_ciphertext_with_enc_extension": true,
+
+  "__comment__upload_progress_sample_ms": "Progress display sampling interval (ms).",
+  "upload_progress_sample_ms": 250,
+
+  "__comment__enable_defender_scan": "If true, runs Windows Defender scan before encryption.",
+  "enable_defender_scan": true,
+
+  "__comment__defender_scan_poll_ms": "Polling interval for Defender status (ms).",
+  "defender_scan_poll_ms": 500,
+
+  "__comment__enable_log": "If true, writes logs to upload_log_directory.",
+  "enable_log": true,
+
+  "__comment__upload_log_directory": "Local log directory; created if missing.",
+  "upload_log_directory": "%USERPROFILE%\\Documents\\SecureUploadLogs"
+}
